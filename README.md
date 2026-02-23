@@ -37,7 +37,8 @@ A C/C++-like math expression DSL that compiles from a string and evaluates at ru
 
 ## Usage
 ```cpp
-#include "bbb_exprdsl.hpp"
+#include "bbb/exprdsl.hpp"
+
 #include <iostream>
 
 int main() {

@@ -34,7 +34,8 @@ C/C++ライクな数式DSLを文字列からコンパイルし、実行時に `d
 
 ## 使い方
 ```cpp
-#include "bbb_exprdsl.hpp"
+#include "bbb/exprdsl.hpp"
+
 #include <iostream>
 
 int main() {
