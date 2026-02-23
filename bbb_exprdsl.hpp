@@ -13,6 +13,7 @@
 #include <vector>
 
 namespace bbb {
+namespace detail { class bytecode_compiler; }
 
 // =============================
 // public api
@@ -64,7 +65,7 @@ private:
 
 	static bool truth(double v) { return v != 0.0; }
 
-	double vm_eval(const ctx& c) const {
+	double vm_eval(const ctx &c) const {
 		std::vector<double> st;
 		st.reserve(64);
 
@@ -77,7 +78,7 @@ private:
 
 		std::size_t pc = 0;
 		while (pc < code_.size()) {
-			const instr& in = code_[pc];
+			const instr &in = code_[pc];
 			switch (in.opcode) {
 				case op::push_const:
 					push(in.imm);
@@ -110,19 +111,19 @@ private:
 					break;
 				}
 
-				case op::add: { double b=pop(), a=pop(); push(a+b); ++pc; break; }
-				case op::sub: { double b=pop(), a=pop(); push(a-b); ++pc; break; }
-				case op::mul: { double b=pop(), a=pop(); push(a*b); ++pc; break; }
-				case op::div_: { double b=pop(), a=pop(); push(a/b); ++pc; break; }
-				case op::mod: { double b=pop(), a=pop(); push(std::fmod(a,b)); ++pc; break; }
-				case op::pow: { double b=pop(), a=pop(); push(std::pow(a,b)); ++pc; break; }
+				case op::add: { double b = pop(), a = pop(); push(a + b); ++pc; break; }
+				case op::sub: { double b = pop(), a = pop(); push(a - b); ++pc; break; }
+				case op::mul: { double b = pop(), a = pop(); push(a * b); ++pc; break; }
+				case op::div_: { double b = pop(), a = pop(); push(a / b); ++pc; break; }
+				case op::mod: { double b = pop(), a = pop(); push(std::fmod(a, b)); ++pc; break; }
+				case op::pow: { double b = pop(), a = pop(); push(std::pow(a, b)); ++pc; break; }
 
-				case op::lt: { double b=pop(), a=pop(); push(a<b  ? 1.0:0.0); ++pc; break; }
-				case op::le: { double b=pop(), a=pop(); push(a<=b ? 1.0:0.0); ++pc; break; }
-				case op::gt: { double b=pop(), a=pop(); push(a>b  ? 1.0:0.0); ++pc; break; }
-				case op::ge: { double b=pop(), a=pop(); push(a>=b ? 1.0:0.0); ++pc; break; }
-				case op::eq: { double b=pop(), a=pop(); push(a==b ? 1.0:0.0); ++pc; break; }
-				case op::ne: { double b=pop(), a=pop(); push(a!=b ? 1.0:0.0); ++pc; break; }
+				case op::lt: { double b = pop(), a = pop(); push(a < b  ? 1.0 : 0.0); ++pc; break; }
+				case op::le: { double b = pop(), a = pop(); push(a <= b ? 1.0 : 0.0); ++pc; break; }
+				case op::gt: { double b = pop(), a = pop(); push(b < a  ? 1.0 : 0.0); ++pc; break; }
+				case op::ge: { double b = pop(), a = pop(); push(b <= a ? 1.0 : 0.0); ++pc; break; }
+				case op::eq: { double b = pop(), a = pop(); push(a == b ? 1.0 : 0.0); ++pc; break; }
+				case op::ne: { double b = pop(), a = pop(); push(a != b ? 1.0 : 0.0); ++pc; break; }
 
 				case op::jz: {
 					double cond = pop(); // consumes condition
@@ -162,11 +163,11 @@ private:
 						case 13: push(std::round(pop1())); break;
 
 						// 2-arg
-						case 14: { auto [a,b]=pop2(); push(std::pow(a,b)); } break;
-						case 15: { auto [a,b]=pop2(); push(std::atan2(a,b)); } break;
-						case 16: { auto [a,b]=pop2(); push(std::fmod(a,b)); } break;
-						case 17: { auto [a,b]=pop2(); push(a<b ? a : b); } break;
-						case 18: { auto [a,b]=pop2(); push(a>b ? a : b); } break;
+						case 14: { auto [a, b] = pop2(); push(std::pow(a, b)); } break;
+						case 15: { auto [a, b] = pop2(); push(std::atan2(a, b)); } break;
+						case 16: { auto [a, b] = pop2(); push(std::fmod(a, b)); } break;
+						case 17: { auto [a, b] = pop2(); push(a < b ? a : b); } break;
+						case 18: { auto [a, b] = pop2(); push(b < a ? a : b); } break;
 
 						default:
 							push(std::numeric_limits<double>::quiet_NaN());
@@ -185,6 +186,7 @@ private:
 
 	friend std::pair<compiled_expr, std::optional<compile_error>>
 	compile(std::string_view);
+	friend class detail::bytecode_compiler;
 };
 
 // forward
@@ -201,13 +203,13 @@ enum class tok_kind : std::uint8_t {
 	end,
 	number,
 	ident,
-	var,      // var_idx 0..3
+	var,      // var_index 0..3
 	lparen, rparen,
 	comma,
 	plus, minus, star, slash, percent, caret,
 	bang,
 	less, less_eq, greater, greater_eq,
-	eq_eq, not_eq,
+	eq_eq, bang_eq,
 	and_and, or_or,
 	question, colon
 };
@@ -216,7 +218,7 @@ struct token {
 	tok_kind kind = tok_kind::end;
 	std::size_t pos = 0;
 	double number = 0.0;
-	int var_idx = -1;
+	int var_index = -1;
 	std::string ident;
 };
 
@@ -225,7 +227,7 @@ class lexer {
 public:
 	explicit lexer(std::string_view s) : src_(s) {}
 
-	const token& peek() {
+	const token &peek() {
 		if (!has_peek_) { peek_tok_ = next_impl(); has_peek_ = true; }
 		return peek_tok_;
 	}
@@ -267,7 +269,7 @@ private:
 		if (match2('&','&')) { i_ += 2; t.kind = tok_kind::and_and; return t; }
 		if (match2('|','|')) { i_ += 2; t.kind = tok_kind::or_or;  return t; }
 		if (match2('=','=')) { i_ += 2; t.kind = tok_kind::eq_eq;  return t; }
-		if (match2('!','=')) { i_ += 2; t.kind = tok_kind::not_eq; return t; }
+		if (match2('!','=')) { i_ += 2; t.kind = tok_kind::bang_eq; return t; }
 		if (match2('<','=')) { i_ += 2; t.kind = tok_kind::less_eq; return t; }
 		if (match2('>','=')) { i_ += 2; t.kind = tok_kind::greater_eq; return t; }
 
@@ -301,9 +303,9 @@ private:
 				n = n * 10 + (src_[i_] - '0');
 				++i_;
 			}
-			if (n < 1 || n > 4) throw std::runtime_error("Variable index after '$' must be 1..4");
+			if (n < 1 || 4 < n) throw std::runtime_error("Variable index after '$' must be 1..4");
 			t.kind = tok_kind::var;
-			t.var_idx = n - 1;
+			t.var_index = n - 1;
 			t.pos = start - 1;
 			return t;
 		}
@@ -312,7 +314,7 @@ private:
 		if (c=='x' || c=='y' || c=='z' || c=='w') {
 			++i_;
 			t.kind = tok_kind::var;
-			t.var_idx = (c=='x') ? 0 : (c=='y') ? 1 : (c=='z') ? 2 : 3;
+			t.var_index = (c=='x') ? 0 : (c=='y') ? 1 : (c=='z') ? 2 : 3;
 			return t;
 		}
 
@@ -355,7 +357,7 @@ private:
 			}
 
 			std::string num_str(src_.substr(start, i_ - start));
-			char* endp = nullptr;
+			char *endp = nullptr;
 			double val = std::strtod(num_str.c_str(), &endp);
 			if (!endp || endp == num_str.c_str()) throw std::runtime_error("Failed to parse number");
 
@@ -391,7 +393,7 @@ struct node { virtual ~node() = default; };
 using node_ptr = std::unique_ptr<node>;
 
 struct num_node : node { double n; std::size_t pos; num_node(double v, std::size_t p): n(v), pos(p) {} };
-struct var_node : node { int idx; std::size_t pos; var_node(int i, std::size_t p): idx(i), pos(p) {} };
+struct var_node : node { int index; std::size_t pos; var_node(int i, std::size_t p): index(i), pos(p) {} };
 
 enum class un_op : std::uint8_t { plus, minus, logical_not, to_bool };
 struct unary_node : node { un_op op; std::size_t pos; node_ptr a; unary_node(un_op o, std::size_t p, node_ptr x): op(o), pos(p), a(std::move(x)) {} };
@@ -427,7 +429,7 @@ public:
 private:
 	lexer lex_;
 
-	[[noreturn]] void fail(std::size_t pos, const std::string& msg) {
+	[[noreturn]] void fail(std::size_t pos, const std::string &msg) {
 		throw std::runtime_error(std::to_string(pos) + ":" + msg);
 	}
 
@@ -436,7 +438,7 @@ private:
 		return false;
 	}
 
-	token expect(tok_kind k, const char* what) {
+	token expect(tok_kind k, const char *what) {
 		token t = lex_.next();
 		if (t.kind != k) fail(t.pos, std::string("Expected ") + what);
 		return t;
@@ -483,7 +485,7 @@ private:
 				std::size_t p = lex_.peek().pos;
 				auto r = parse_relational();
 				n = std::make_unique<binary_node>(bin_op::eq, p, std::move(n), std::move(r));
-			} else if (accept(tok_kind::not_eq)) {
+			} else if (accept(tok_kind::bang_eq)) {
 				std::size_t p = lex_.peek().pos;
 				auto r = parse_relational();
 				n = std::make_unique<binary_node>(bin_op::ne, p, std::move(n), std::move(r));
@@ -570,7 +572,7 @@ private:
 	}
 
 	node_ptr parse_primary() {
-		const token& t = lex_.peek();
+		const token &t = lex_.peek();
 		switch (t.kind) {
 			case tok_kind::number: {
 				token tt = lex_.next();
@@ -578,8 +580,8 @@ private:
 			}
 			case tok_kind::var: {
 				token tt = lex_.next();
-				if (tt.var_idx < 0 || tt.var_idx > 3) fail(tt.pos, "Invalid variable index");
-				return std::make_unique<var_node>(tt.var_idx, tt.pos);
+				if (tt.var_index < 0 || 3 < tt.var_index) fail(tt.pos, "Invalid variable index");
+				return std::make_unique<var_node>(tt.var_index, tt.pos);
 			}
 			case tok_kind::ident: {
 				token id = lex_.next();
@@ -614,7 +616,7 @@ private:
 	}
 };
 
-inline compile_error to_compile_error(const std::runtime_error& e) {
+inline compile_error to_compile_error(const std::runtime_error &e) {
 	std::string s = e.what();
 	auto p = s.find(':');
 	if (p == std::string::npos) return compile_error{0, s};
@@ -625,8 +627,8 @@ inline compile_error to_compile_error(const std::runtime_error& e) {
 }
 
 // ---------- constant folding (safe set) ----------
-inline bool is_num(const node& n, double* out = nullptr) {
-	if (auto p = dynamic_cast<const num_node*>(&n)) {
+inline bool is_num(const node &n, double *out = nullptr) {
+	if (auto p = dynamic_cast<const num_node *>(&n)) {
 		if (out) *out = p->n;
 		return true;
 	}
@@ -662,7 +664,7 @@ inline double eval_func(int fid, double a, double b) {
 		case 15: return std::atan2(a,b);
 		case 16: return std::fmod(a,b);
 		case 17: return (a<b) ? a : b;
-		case 18: return (a>b) ? a : b;
+		case 18: return (b < a) ? a : b;
 		default: return std::numeric_limits<double>::quiet_NaN();
 	}
 }
@@ -670,9 +672,9 @@ inline double eval_func(int fid, double a, double b) {
 inline node_ptr fold_constants(node_ptr n) {
 	if (!n) return n;
 
-	if (dynamic_cast<num_node*>(n.get()) || dynamic_cast<var_node*>(n.get())) return n;
+	if (dynamic_cast<num_node *>(n.get()) || dynamic_cast<var_node *>(n.get())) return n;
 
-	if (auto p = dynamic_cast<unary_node*>(n.get())) {
+	if (auto p = dynamic_cast<unary_node *>(n.get())) {
 		p->a = fold_constants(std::move(p->a));
 
 		double av = 0.0;
@@ -689,8 +691,8 @@ inline node_ptr fold_constants(node_ptr n) {
 		return n;
 	}
 
-	if (auto p = dynamic_cast<call_node*>(n.get())) {
-		for (auto& a : p->args) a = fold_constants(std::move(a));
+	if (auto p = dynamic_cast<call_node *>(n.get())) {
+		for (auto &a : p->args) a = fold_constants(std::move(a));
 
 		if (p->argc == 1) {
 			double a0 = 0.0;
@@ -698,7 +700,7 @@ inline node_ptr fold_constants(node_ptr n) {
 				return std::make_unique<num_node>(eval_func(p->fid, a0), p->pos);
 			}
 		} else if (p->argc == 2) {
-			double a0=0.0, a1=0.0;
+			double a0 = 0.0, a1 = 0.0;
 			if (is_num(*p->args[0], &a0) && is_num(*p->args[1], &a1)) {
 				return std::make_unique<num_node>(eval_func(p->fid, a0, a1), p->pos);
 			}
@@ -706,7 +708,7 @@ inline node_ptr fold_constants(node_ptr n) {
 		return n;
 	}
 
-	if (auto p = dynamic_cast<ternary_node*>(n.get())) {
+	if (auto p = dynamic_cast<ternary_node *>(n.get())) {
 		p->c = fold_constants(std::move(p->c));
 
 		double cv = 0.0;
@@ -720,7 +722,7 @@ inline node_ptr fold_constants(node_ptr n) {
 		return n;
 	}
 
-	if (auto p = dynamic_cast<binary_node*>(n.get())) {
+	if (auto p = dynamic_cast<binary_node *>(n.get())) {
 		p->l = fold_constants(std::move(p->l));
 
 		if (p->op == bin_op::and_and) {
@@ -753,7 +755,7 @@ inline node_ptr fold_constants(node_ptr n) {
 
 		p->r = fold_constants(std::move(p->r));
 
-		double a=0.0, b=0.0;
+		double a = 0.0, b = 0.0;
 		if (is_num(*p->l, &a) && is_num(*p->r, &b)) {
 			double res = std::numeric_limits<double>::quiet_NaN();
 			switch (p->op) {
@@ -766,8 +768,8 @@ inline node_ptr fold_constants(node_ptr n) {
 
 				case bin_op::lt: res = b2d(a <  b); break;
 				case bin_op::le: res = b2d(a <= b); break;
-				case bin_op::gt: res = b2d(a >  b); break;
-				case bin_op::ge: res = b2d(a >= b); break;
+				case bin_op::gt: res = b2d(b <  a); break;
+				case bin_op::ge: res = b2d(b <= a); break;
 				case bin_op::eq: res = b2d(a == b); break;
 				case bin_op::ne: res = b2d(a != b); break;
 
@@ -809,11 +811,11 @@ public:
 		code[at].arg = static_cast<int>(target);
 	}
 
-	void compile(const node& n) {
-		if (auto p = dynamic_cast<const num_node*>(&n)) { emit(op::push_const, 0, p->n); return; }
-		if (auto p = dynamic_cast<const var_node*>(&n)) { emit(op::push_var, p->idx); return; }
+	void compile(const node &n) {
+		if (auto p = dynamic_cast<const num_node *>(&n)) { emit(op::push_const, 0, p->n); return; }
+		if (auto p = dynamic_cast<const var_node *>(&n)) { emit(op::push_var, p->index); return; }
 
-		if (auto p = dynamic_cast<const unary_node*>(&n)) {
+		if (auto p = dynamic_cast<const unary_node *>(&n)) {
 			compile(*p->a);
 			switch (p->op) {
 				case un_op::plus: break;
@@ -824,13 +826,13 @@ public:
 			return;
 		}
 
-		if (auto p = dynamic_cast<const call_node*>(&n)) {
-			for (auto& a : p->args) compile(*a);
+		if (auto p = dynamic_cast<const call_node *>(&n)) {
+			for (auto &a : p->args) compile(*a);
 			emit(op::call, p->fid);
 			return;
 		}
 
-		if (auto p = dynamic_cast<const ternary_node*>(&n)) {
+		if (auto p = dynamic_cast<const ternary_node *>(&n)) {
 			compile(*p->c);
 			emit(op::to_bool);
 			std::size_t jz_else = emit_placeholder(op::jz);
@@ -844,13 +846,13 @@ public:
 			return;
 		}
 
-		if (auto p = dynamic_cast<const binary_node*>(&n)) { compile_binary(*p); return; }
+		if (auto p = dynamic_cast<const binary_node *>(&n)) { compile_binary(*p); return; }
 
 		emit(op::push_const, 0, std::numeric_limits<double>::quiet_NaN());
 	}
 
 private:
-	void compile_binary(const binary_node& b) {
+	void compile_binary(const binary_node &b) {
 		if (b.op == bin_op::and_and) {
 			compile(*b.l);
 			emit(op::to_bool);
@@ -931,7 +933,7 @@ compile(std::string_view input) {
 
 		out.code_ = std::move(bc.code);
 		return {std::move(out), std::nullopt};
-	} catch (const std::runtime_error& e) {
+	} catch (const std::runtime_error &e) {
 		return {compiled_expr{}, detail::to_compile_error(e)};
 	} catch (...) {
 		return {compiled_expr{}, compile_error{0, "Unknown error"}};
